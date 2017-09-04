@@ -397,6 +397,21 @@ class LambdaHandler(object):
                 logger.error("Cannot find a function to process the authorization request.")
                 raise Exception('Unauthorized')
 
+        # direct lambda invocation without API gateway.
+        # Assume it's POST '/' request and 'event' is request json string.
+        # XXX: Quick & Dirty hack to directly call Flask-ASK as lambda
+        elif 'httpMethod' not in event:
+            event = {
+                'path': '/',
+                'httpMethod': 'POST',
+                'headers': {'Content-Type': 'text/json'},
+                'queryStringParameters': None,
+                'pathParameters': None,
+                'requestContext': {'httpMethod': 'POST'},
+                'body': json.dumps(event),
+                'Flask-Ask-Lambda': True
+            }
+            
         # Normal web app flow
         try:
             # Timing
@@ -447,6 +462,10 @@ class LambdaHandler(object):
                 # Execute the application
                 response = Response.from_app(self.wsgi_app, environ)
 
+                # if it's a lambda function, returns data as it is
+                if 'Flask-Ask-Lambda' in event:
+                    return json.loads(response.data)
+                    
                 # This is the object we're going to return.
                 # Pack the WSGI response into our special dictionary.
                 zappa_returndict = dict()
@@ -509,3 +528,48 @@ def keep_warm_callback(event, context):
     """Method is triggered by the CloudWatch event scheduled when keep_warm setting is set to true."""
     lambda_handler(event={}, context=context)  # overriding event with an empty one so that web app initialization will
     # be triggered.
+
+
+class LambdaContext():
+    dummy = 1
+    
+if __name__ == "__main__":
+    logging.getLogger().setLevel(logging.DEBUG)
+    ask_event = {
+        "session": {
+            "new": True,
+            "sessionId": "SessionId.d22f456e-8cdf-4e7a-b97a-5d4d75bbbc19",
+            "application": {
+                "applicationId": "amzn1.ask.skill.0bec6182-f9d4-4142-b239-e0f0de48a2fe"
+            },
+            "attributes": {},
+            "user": {
+                "userId": "amzn1.ask.account.AEWTYQJMJYHPZNR7W5FANMJ2TGMFJHKURXI7IMGTSR3R3NMAF3CJ55QJORRKIEAPWBDSECA4ROBNYBMAE742IIVGD5IPWGM7DS6FFAZGKW626MXAVE2BPETVFTIDAU3KKCQ5DLP5FKQONUJXWD3VSN5LDF7S4QOC3UENBZNKECR744JFAWMGL5GXXS3O26E5ZK2FEAAUJYMQ3AY"
+            }
+        },
+        "request": {
+            "type": "LaunchRequest",
+            "requestId": "EdwRequestId.121fbcb3-f3ff-455e-95c3-609584ca6219",
+            "locale": "ja-JP",
+            "timestamp": "2017-09-01T02:22:34Z"
+        },
+        "context": {
+            "AudioPlayer": {
+                "playerActivity": "IDLE"
+            },
+            "System": {
+                "application": {
+                    "applicationId": "amzn1.ask.skill.0bec6182-f9d4-4142-b239-e0f0de48a2fe"
+                },
+                "user": {
+                    "userId": "amzn1.ask.account.AEWTYQJMJYHPZNR7W5FANMJ2TGMFJHKURXI7IMGTSR3R3NMAF3CJ55QJORRKIEAPWBDSECA4ROBNYBMAE742IIVGD5IPWGM7DS6FFAZGKW626MXAVE2BPETVFTIDAU3KKCQ5DLP5FKQONUJXWD3VSN5LDF7S4QOC3UENBZNKECR744JFAWMGL5GXXS3O26E5ZK2FEAAUJYMQ3AY"
+                },
+                "device": {
+                    "supportedInterfaces": {}
+                }
+            }
+        },
+        "version": "1.0"
+    }
+
+    lambda_handler(ask_event, LambdaContext())
